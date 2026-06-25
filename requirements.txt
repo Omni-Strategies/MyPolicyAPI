@@ -1,0 +1,11 @@
+dotenv
+sqlalchemy
+fastapi
+uvicorn
+psycopg2-binary
+pyyaml
+pytest
+pytest-cov
+python-jose[cryptography]
+passlib[bcrypt]==4.0.1
+python-multipart
