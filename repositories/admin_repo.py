@@ -1,4 +1,4 @@
-from typing import List, Optional
+from typing import Optional
 from sqlalchemy.orm import Session
 from models.models import Base, FormRequests, Admins
 from schemas import admin_schema, requests_schema, admin_schema
