@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 import logging
 from security.dependencies import *
 
-router = APIRouter()
+router = APIRouter(tags=["form_requests"])
 
 logger = logging.getLogger(__name__)
 

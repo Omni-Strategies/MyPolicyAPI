@@ -2,12 +2,13 @@ from fastapi import APIRouter, HTTPException, Depends
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 from repositories.admin_repo import get_admin_by_email
+from repositories.insurance_company_repo import get_insurance_company_by_email
 from security.password import verify_password
 from security.auth import create_access_token
 from repositories.customer_repo import get_customer_by_email
 from database import get_db
 
-router = APIRouter(prefix="/auth")
+router = APIRouter(prefix="/auth", tags=["auth"])
 
 @router.post("/login")
 def login(
@@ -27,6 +28,18 @@ def login(
             }),
             "token_type": "bearer"
         }
+    company_admin = get_insurance_company_by_email(db, email)
+
+    if company_admin:
+        return {
+            "access_token": create_access_token({
+                "sub": str(company_admin.id),
+                "account_type": "company_admin"
+            }),
+            "token_type": "bearer"
+        }
+
+
 
     customer = get_customer_by_email(db, email)
 

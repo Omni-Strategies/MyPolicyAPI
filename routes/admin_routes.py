@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/admins", tags=["admins"])
 
 @router.post("/")
-async def create_admin(admin: admin_schema.adminCreateUserInterface, db: Session = Depends(get_db)):
+async def create_admin(admin: admin_schema.adminCreateUserInterface, db: Session = Depends(get_db), current_user=Depends(admin_required)):
     logger.info(f"Creating admin with data: {admin.dict()}")
     return admin_repo.create_admin(db, admin)
 

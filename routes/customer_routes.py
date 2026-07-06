@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/customers", tags=["customers"])
 
 @router.post("/")
-async def create_customer(customer: customer_schema.CustomerRegisterInterface, db: Session = Depends(get_db)):
+async def create_customer(customer: customer_schema.CustomerRegisterInterface, db: Session = Depends(get_db), current_user=Depends(customer_required)):
     logger.info(f"Creating customer with data: {customer.dict()}")
     return customer_repo.create_customer(db, customer)
 
