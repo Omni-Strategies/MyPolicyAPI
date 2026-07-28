@@ -53,8 +53,8 @@ INSERT INTO customers (id, first_name, last_name, email, digital_address, gender
 
 -- INSURANCE PRODUCTS
 INSERT INTO insurance_products (id, name, image, created_by) VALUES
-('b0000000-0000-0000-0000-000000000001', 'Motor Comprehensive', '/images/products/motor-comprehensive.png', '20000000-0000-0000-0000-000000000001'),
-('b0000000-0000-0000-0000-000000000002', 'Motor Third Party', '/images/products/motor-third-party.png', '20000000-0000-0000-0000-000000000001'),
+('b0000000-0000-0000-0000-000000000001', 'Motor Insurance', '/images/products/motor-comprehensive.png', '20000000-0000-0000-0000-000000000001'),
+('b0000000-0000-0000-0000-000000000002', 'Home Owner Insurance', '/images/products/motor-third-party.png', '20000000-0000-0000-0000-000000000001'),
 ('b0000000-0000-0000-0000-000000000003', 'Fire Insurance', '/images/products/fire.png', '20000000-0000-0000-0000-000000000001');
 
 -- COMMISSIONS (agent/agency level)

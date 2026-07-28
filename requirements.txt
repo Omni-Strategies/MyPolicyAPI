@@ -10,3 +10,7 @@ python-jose[cryptography]
 python-multipart
 passlib==1.7.4
 bcrypt==4.0.1
+redis==8.0.1
+pydantic-settings==2.6.1
+python-dateutil
+boto3

@@ -14,6 +14,10 @@ from routes import (
     quotes_routes,
     insurance_company_routes,
     company_admin_login_routes,
+    insurance_types_routes,
+    countries_routes,
+    insurance_commissions_routes,
+    policies_routes
 )
 import os
 
@@ -61,3 +65,7 @@ app.include_router(admin_login_routes.router)
 app.include_router(quotes_routes.router)
 app.include_router(insurance_company_routes.router)
 app.include_router(company_admin_login_routes.router)
+app.include_router(insurance_types_routes.router)
+app.include_router(countries_routes.router)
+app.include_router(insurance_commissions_routes.router)
+app.include_router(policies_routes.router)

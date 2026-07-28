@@ -1,6 +1,7 @@
 from typing import List, Optional
 from sqlalchemy.orm import Session
-from models.models import Base, FormRequests, InsuranceRequests  
+from sqlalchemy.orm import joinedload
+from models.models import Base, FormRequests, InsuranceRequests, Quotes  
 from schemas import requests_schema
 import uuid
 import logging
@@ -31,6 +32,24 @@ def get_all_requests(session: Session) -> List[InsuranceRequests]:
         session.rollback()
         raise
 
+def get_requests_with_customer_details_excluding_quoted(session: Session, company_id: uuid.UUID) -> List[InsuranceRequests]:
+    quoted_ids = (
+        session.query(Quotes.insurance_request_id)
+        .filter(Quotes.insurance_company_id == company_id)
+        .subquery()
+    )
+
+    requests = (
+        session.query(InsuranceRequests)
+        .options(
+            joinedload(InsuranceRequests.customers),
+            joinedload(InsuranceRequests.insurance_product),
+        )
+        .filter(InsuranceRequests.id.notin_(quoted_ids))
+        .filter(InsuranceRequests.status == "pending")
+        .all()
+    )
+    return requests
 def get_request(session: Session, request_id: uuid.UUID) -> Optional[InsuranceRequests]:
     try:
         request = session.query(InsuranceRequests).filter(InsuranceRequests.id == request_id).first()
@@ -44,6 +63,26 @@ def get_request(session: Session, request_id: uuid.UUID) -> Optional[InsuranceRe
         session.rollback()
         raise
 
+def get_request_with_customer_details(session: Session, request_id: uuid.UUID) -> Optional[InsuranceRequests]:
+    try:
+        request = (
+            session.query(InsuranceRequests)
+            .options(
+                joinedload(InsuranceRequests.customers),
+                joinedload(InsuranceRequests.insurance_product),
+            )
+            .filter(InsuranceRequests.id == request_id)
+            .first()
+        )
+        if request:
+            logger.info(f"Insurance request fetched with ID: {request_id}")
+        else:
+            logger.warning(f"No insurance request found with ID: {request_id}")
+        return request
+    except Exception as e:
+        logger.error(f"Error occurred while fetching insurance request: {e}")
+        session.rollback()
+        raise
 
 def update_request(session: Session, request: requests_schema.InsuranceRequestUpdateInterface, request_id: uuid.UUID) -> Optional[InsuranceRequests]:
     try:
@@ -77,3 +116,19 @@ def delete_request(session: Session, request_id: uuid.UUID) -> bool:
         session.rollback()
         raise                                
    
+def get_all_requests_with_customer_details(session: Session) -> List[InsuranceRequests]:
+    try:
+        requests = (
+            session.query(InsuranceRequests)
+            .options(
+                joinedload(InsuranceRequests.customers),
+                joinedload(InsuranceRequests.insurance_product),
+            )
+            .all()
+        )
+        logger.info(f"Fetched {len(requests)} insurance requests")
+        return requests
+    except Exception as e:
+        logger.error(f"Error occurred while fetching insurance requests: {e}")
+        session.rollback()
+        raise

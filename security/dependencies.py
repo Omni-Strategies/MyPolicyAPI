@@ -12,14 +12,16 @@ def get_current_user(token: str = Depends(oauth2_scheme)):
         user_id = payload.get("sub")
         account_type = payload.get("account_type")
 
+        print(f"[DEBUG] decoded token -> user_id={user_id}, account_type={account_type}")  # TEMP
+
         if user_id is None:
             raise HTTPException(status_code=401, detail="Invalid token")
 
         return {"id": user_id, "account_type": account_type}
 
-    except JWTError:
+    except JWTError as e:
+        print(f"[DEBUG] JWTError: {e}")  # TEMP
         raise HTTPException(status_code=401, detail="Invalid token")
-
 
 def require_role(*allowed_roles: str):
     """

@@ -33,6 +33,13 @@ async def get_insurance_company(company_email: str,
     logger.info(f"Fetching insurance company with email: {company_email}")
     return insurance_company_repo.get_insurance_company_by_email(db, company_email)
 
+@router.get("/phone/{phone_number}")
+async def get_insurance_company_by_phone_number(phone_number: str,
+                                                db: Session = Depends(get_db),
+                                                current_user=Depends(admin_required)):
+    logger.info(f"Fetching insurance company with phone number: {phone_number}")
+    return insurance_company_repo.get_insurance_company_by_phone_number(db, phone_number)
+
 @router.put("/updates/{company_id}")
 async def update_insurance_company(company_id: uuid.UUID,
                                     updates: insurance_company_schema.InsuranceCompanyUpdate,

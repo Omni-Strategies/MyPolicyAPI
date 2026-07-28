@@ -76,6 +76,29 @@ def get_insurance_company_by_email(
         session.rollback()
         raise
     
+def get_insurance_company_by_phone_number(
+    session: Session,
+    phone_number: str
+) -> Optional[InsuranceCompanies]:
+    try:
+        company = (
+            session.query(InsuranceCompanies)
+            .filter(InsuranceCompanies.phone_numbers.any(phone_number))
+            .first()
+        )
+
+        if company:
+            logger.info(f"Insurance company fetched with phone number: {phone_number}")
+        else:
+            logger.warning(f"No insurance company found with phone number: {phone_number}")
+
+        return company
+
+    except Exception as e:
+        logger.error(f"Error occurred while fetching insurance company: {e}")
+        session.rollback()
+        raise
+    
 def update_insurance_company(session: Session, company_id: uuid.UUID, updates: insurance_company_schema.InsuranceCompanyUpdate) -> Optional[InsuranceCompanies]:
     try:
         company = session.query(InsuranceCompanies).filter(InsuranceCompanies.id == company_id).first()

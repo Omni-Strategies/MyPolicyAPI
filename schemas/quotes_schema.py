@@ -8,14 +8,11 @@ from pydantic import ConfigDict, Field
 
 class quoteCreateInterface(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
-    
-    #insurance_company_id: str = Field(alias="insuranceCompanyId")
-    premium: float
-    agent_commission: float = Field(alias="agentCommission")
-    status: str
-    info: str
-    insurance_request_id: str = Field(alias="insuranceRequestId")
 
+    premium: float
+    agent_commission: Optional[float] = Field(default=None, alias="agentCommission")
+    info: Optional[str] = None
+    insurance_request_id: str = Field(alias="insuranceRequestId")
 
 class QuoteBatchCreate(BaseModel):
     items: List[quoteCreateInterface]
@@ -57,7 +54,6 @@ class quoteUpdateInterface(BaseModel):
     insurance_company_id: Optional[str] = Field(alias="insuranceCompanyId", default=None)
     premium: Optional[float] = None
     agent_commission: Optional[float] = Field(alias="agentCommission", default=None)
-    status: Optional[str] = None
     insurance_request_id: Optional[str] = Field(alias="insuranceRequestId", default=None)
 
 class quoteRequestUpdateInterface(BaseModel):

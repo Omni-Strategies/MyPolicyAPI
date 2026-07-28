@@ -5,17 +5,16 @@ import uuid
 from decimal import Decimal
 from schemas.agent_schema import *
 from schemas.admin_schema import *
-
 from schemas.customer_schema import customerModelInterface
 from schemas.insuranceProduct_schema import *
 
 class InsuranceRequestCreateInterface(BaseModel):
     insurance_product_id: str
     request_data: dict
-    requested_by: Optional[str]
-    intermediary_id: str
-    assigned_agency_id: str
-    assigned_agent_id: str
+    requested_by: str
+    intermediary_id: Optional[str] = None
+    assigned_agency_id: Optional[str] = None
+    assigned_agent_id: Optional[str] = None
 
 class insuranceRequestInterface(BaseModel):
     id: str
@@ -26,7 +25,7 @@ class insuranceRequestInterface(BaseModel):
     reason: Optional[str]
     deleted: bool
     requestedBy: Optional[str]
-    intermediaryId: str
+    intermediaryId: Optional[str]
     createdAt: str
     updatedAt: str
 

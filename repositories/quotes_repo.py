@@ -1,5 +1,5 @@
 from typing import List, Optional
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 from models.models import Base, Quotes, InsuranceRequests 
 from schemas import form_requests_schema, quotes_schema
 import uuid
@@ -42,7 +42,26 @@ def get_all_quotes(session: Session) -> List[Quotes]:
         logger.error(f"Error occurred while fetching quotes: {e}")
         session.rollback()
         raise
-
+def get_all_quotes_by_company(session: Session, company_id: uuid.UUID) -> List[Quotes]:
+    try:
+        quotes = (
+            session.query(Quotes)
+            .options(
+                joinedload(Quotes.insurance_request)
+                .joinedload(InsuranceRequests.customers),
+                joinedload(Quotes.insurance_request)
+                .joinedload(InsuranceRequests.insurance_product),
+            )
+            .filter(Quotes.insurance_company_id == company_id)
+            
+            .all()
+        )
+        logger.info(f"Fetched {len(quotes)} quotes for company ID: {company_id}")
+        return quotes
+    except Exception as e:
+        logger.error(f"Error occurred while fetching quotes for company ID {company_id}: {e}")
+        session.rollback()
+        raise
 def get_quote(session: Session, quote_id: uuid.UUID) -> Optional[Quotes]:
     try:
         quote = session.query(Quotes).filter(Quotes.id == quote_id).first()
@@ -56,12 +75,57 @@ def get_quote(session: Session, quote_id: uuid.UUID) -> Optional[Quotes]:
         session.rollback()
         raise
 
+def get_quote_with_details(session: Session, quote_id: uuid.UUID) -> Optional[Quotes]:
+    try:
+        quote = (
+            session.query(Quotes)
+            .options(
+                joinedload(Quotes.insurance_request)
+                .joinedload(InsuranceRequests.customers),
+                joinedload(Quotes.insurance_request)
+                .joinedload(InsuranceRequests.insurance_product),
+            )
+            .filter(Quotes.id == quote_id)
+            .first()
+        )
+        if quote:
+            logger.info(f"Quote with details fetched with ID: {quote_id}")
+        else:
+            logger.warning(f"No quote found with ID: {quote_id}")
+        return quote
+    
+    except Exception as e:
+        logger.error(f"Error occurred while fetching quote with details: {e}")
+        session.rollback()
+        raise
+
+def get_quotes_with_details_by_customer(session: Session, customer_id: uuid.UUID) -> list[Quotes]:
+    try:
+        quotes = (
+            session.query(Quotes)
+            .join(Quotes.insurance_request)
+            .options(
+                joinedload(Quotes.insurance_request)
+                .joinedload(InsuranceRequests.customers),
+                joinedload(Quotes.insurance_request)
+                .joinedload(InsuranceRequests.insurance_product),
+            )
+            .filter(InsuranceRequests.requested_by == customer_id)
+            .all()
+        )
+        logger.info(f"Fetched {len(quotes)} quotes for customer: {customer_id}")
+        return quotes
+    except Exception as e:
+        logger.error(f"Error fetching quotes for customer {customer_id}: {e}")
+        raise
+    
+
 def update_quote(session: Session, quote: quotes_schema.quoteUpdateInterface, quote_id: uuid.UUID) -> Optional[Quotes]:
     try:
         db_quote = session.query(Quotes).filter(Quotes.id == quote_id).first()
         if not db_quote:
             return None
-        for key, value in quote.dict().items():
+        for key, value in quote.dict(exclude_unset=True).items():
             if hasattr(db_quote, key):
                 setattr(db_quote, key, value)
         session.add(db_quote)
