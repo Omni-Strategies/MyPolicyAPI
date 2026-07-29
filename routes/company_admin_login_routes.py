@@ -1,7 +1,9 @@
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 import logging
-
+import requests
+import json
+import os
 from security.auth import create_access_token
 from database import get_db
 from models.models import *
@@ -18,17 +20,19 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/company-login", tags=["company_admin_login"])
 
 COOLDOWN_SECONDS = 30
+
+
 class RequestOTPRequest(BaseModel):
     email: str
     phone_number: str
 
 
 class VerifyOTPRequest(BaseModel):
-    email: str
+    phone_number: str
     otp: str
 
 
-@router.post("/company-admin-login/request-otp")
+@router.post("/request-otp")
 def request_otp(request: RequestOTPRequest, db: Session = Depends(get_db)):
     company_admin = get_insurance_company_by_email(db, request.email)
 
@@ -38,48 +42,80 @@ def request_otp(request: RequestOTPRequest, db: Session = Depends(get_db)):
     stored_numbers = [str(p) for p in (company_admin.phone_numbers or [])]
     if str(request.phone_number) not in stored_numbers:
         raise HTTPException(status_code=401, detail="Invalid credentials")
-    
-    cooldown_key = f"otp_cooldown:{company_admin.id}"
-    if redis_client.exists(cooldown_key):
-        ttl = redis_client.ttl(cooldown_key)
-        raise HTTPException(
-            status_code=429,
-            detail=f"Please wait {ttl} seconds before requesting another code"
+    post_data = {
+        "number": request.phone_number,
+        "expiry": 1,
+        "length": 6,
+        "messagetemplate": "Hello, your OTP is : %OTPCODE%. It will expire after %EXPIRY% mins",
+        "type": "ALPHANUMERIC",
+        "senderid": os.getenv("WIGAL_SENDER_ID"),
+    }
+
+    headers = {
+        "Content-Type": "application/json",
+        "API-KEY": os.getenv("WIGAL_KEY"),
+        "USERNAME": os.getenv("WIGAL_USERNAME"),
+    }
+
+    try:
+        response = requests.post(
+            "https://frogapi.wigal.com.gh/api/v3/sms/otp/generate",
+            headers=headers,
+            data=json.dumps(post_data),
+            timeout=10,
         )
+    except requests.RequestException as e:
+        logger.error(f"Wigal OTP request failed: {e}")
+        raise HTTPException(status_code=502, detail="Failed to reach OTP provider")
 
-    otp = generate_otp()
-    key = f"otp:{company_admin.id}"
+    print(f"[request_otp] status: {response.status_code}")
 
-    redis_client.hset(key, mapping={"otp_hash": hash_otp(otp), "attempts": 0})
-    redis_client.expire(key, OTP_TTL_SECONDS)
-    redis_client.set(cooldown_key, "1", ex=COOLDOWN_SECONDS)
-    send_otp_email(request.email, otp)
+    if response.status_code != 200:
+        logger.error(
+            f"Wigal OTP generate failed [{response.status_code}]: {response.text}"
+        )
+        raise HTTPException(status_code=502, detail="OTP provider error")
 
-    return {"message": "OTP sent via email"}
+    data = response.json()
+    logger.info(f"OTP requested for {request.phone_number}")
+    return data
 
 
-@router.post("/company-admin-login/verify-otp")
+@router.post("/verify-otp")
 def verify_otp(request: VerifyOTPRequest, db: Session = Depends(get_db)):
-    company_admin = get_insurance_company_by_email(db, request.email)
-    if not company_admin:
-        raise HTTPException(status_code=401, detail="Invalid credentials")
+    company_admin = get_insurance_company_by_phone_number(db, request.phone_number)
+    post_data = {
+        "otpcode": request.otp,
+        "number": request.phone_number,
+    }
 
-    key = f"otp:{company_admin.id}"
-    record = redis_client.hgetall(key)
+    headers = {
+        "Content-Type": "application/json",
+        "API-KEY": os.getenv("WIGAL_KEY"),
+        "USERNAME": os.getenv("WIGAL_USERNAME"),
+    }
 
-    if not record:
-        raise HTTPException(status_code=401, detail="No active OTP request or it has expired")
+    try:
+        response = requests.post(
+            "https://frogapi.wigal.com.gh/api/v3/sms/otp/verify",
+            headers=headers,
+            data=json.dumps(post_data),
+            timeout=10,
+        )
+    except requests.RequestException as e:
+        logger.error(f"Wigal OTP verify failed: {e}")
+        raise HTTPException(status_code=502, detail="Failed to reach OTP provider")
 
-    attempts = int(record["attempts"])
-    if attempts >= MAX_ATTEMPTS:
-        redis_client.delete(key)
-        raise HTTPException(status_code=429, detail="Too many attempts")
+    print(f"[verify_otp] status: {response.status_code}")
 
-    if record["otp_hash"] != hash_otp(request.otp):
-        redis_client.hincrby(key, "attempts", 1)
-        raise HTTPException(status_code=401, detail="Invalid OTP")
+    if response.status_code != 200:
+        logger.error(
+            f"Wigal OTP verify failed [{response.status_code}]: {response.text}"
+        )
+        raise HTTPException(status_code=400, detail="OTP verification failed")
 
-    redis_client.delete(key)
+    data = response.json()
+    logger.info(f"OTP verified for {request.phone_number}")
 
     return {
         "access_token": create_access_token({

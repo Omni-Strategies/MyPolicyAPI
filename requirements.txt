@@ -14,3 +14,4 @@ redis==8.0.1
 pydantic-settings==2.6.1
 python-dateutil
 boto3
+requests
