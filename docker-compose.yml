@@ -20,6 +20,22 @@ services:
     volumes:
       - minio_data:/data
 
+  minio-init:
+    image: minio/mc
+    depends_on:
+      - minio
+    restart: "no"
+    entrypoint: >
+      /bin/sh -c "
+      until mc alias set local http://minio:9000 minioadmin minioadmin; do
+        echo 'waiting for minio...';
+        sleep 1;
+      done;
+      mc mb -p local/mypolicy-documents || true;
+      mc anonymous set download local/mypolicy-documents || true;
+      echo 'minio bucket ready';
+      "
+
   api:
     build:
       context: ./
@@ -32,6 +48,7 @@ services:
       - mypolicy-db
       - redis
       - minio
+      - minio-init
     env_file: .env
     environment:
       LOG_DIR: /app/logs
@@ -42,6 +59,7 @@ services:
       S3_ACCESS_KEY: minioadmin
       S3_SECRET_KEY: minioadmin
       S3_BUCKET: mypolicy-documents
+      # WIGAL_* (including WIGAL_SMS_MOCK) come from env_file: .env
     restart: unless-stopped
 
   pgadmin:

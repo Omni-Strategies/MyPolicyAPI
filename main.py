@@ -12,6 +12,7 @@ from routes import (
     admin_routes,
     admin_login_routes,
     quotes_routes,
+    customer_quotes_routes,
     insurance_company_routes,
     company_admin_login_routes,
     insurance_types_routes,
@@ -63,6 +64,7 @@ app.include_router(form_requests.router)
 app.include_router(admin_routes.router)
 app.include_router(admin_login_routes.router)
 app.include_router(quotes_routes.router)
+app.include_router(customer_quotes_routes.router)
 app.include_router(insurance_company_routes.router)
 app.include_router(company_admin_login_routes.router)
 app.include_router(insurance_types_routes.router)

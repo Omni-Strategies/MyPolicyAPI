@@ -36,5 +36,5 @@ class InsuranceCompanyModel(BaseModel):
 
 
 class InsuranceCompanyUpdate(BaseModel):
-    name: str
-    logo: str
+    name: Optional[str] = None
+    logo: Optional[Union[LogoData, str]] = None

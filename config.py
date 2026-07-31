@@ -11,6 +11,8 @@ class Settings(BaseSettings):
     WIGAL_USERNAME: str
     WIGAL_API_KEY: str
     WIGAL_SENDER_ID: str
+    # When true, skip Wigal and log/return OTP (local/dev only)
+    WIGAL_SMS_MOCK: bool = False
 
     # S3 / MinIO
     S3_ENDPOINT_URL: str = "http://minio:9000"

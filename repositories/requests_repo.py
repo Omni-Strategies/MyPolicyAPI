@@ -63,6 +63,24 @@ def get_request(session: Session, request_id: uuid.UUID) -> Optional[InsuranceRe
         session.rollback()
         raise
 
+
+def get_requests_by_customer(session: Session, customer_id: uuid.UUID) -> List[InsuranceRequests]:
+    try:
+        requests = (
+            session.query(InsuranceRequests)
+            .options(joinedload(InsuranceRequests.insurance_product))
+            .filter(InsuranceRequests.requested_by == customer_id)
+            .filter(InsuranceRequests.deleted.is_(False))
+            .order_by(InsuranceRequests.created_at.desc())
+            .all()
+        )
+        logger.info(f"Fetched {len(requests)} insurance requests for customer {customer_id}")
+        return requests
+    except Exception as e:
+        logger.error(f"Error occurred while fetching requests for customer {customer_id}: {e}")
+        session.rollback()
+        raise
+
 def get_request_with_customer_details(session: Session, request_id: uuid.UUID) -> Optional[InsuranceRequests]:
     try:
         request = (

@@ -10,7 +10,6 @@ class quoteCreateInterface(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
     premium: float
-    agent_commission: Optional[float] = Field(default=None, alias="agentCommission")
     info: Optional[str] = None
     insurance_request_id: str = Field(alias="insuranceRequestId")
 
