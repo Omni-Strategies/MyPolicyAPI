@@ -11,15 +11,10 @@ from schemas import insurance_company_schema
 from sqlalchemy.orm import Session
 from security.dependencies import *
 from repositories.insurance_company_repo import *
-from redis_client import redis_client
-from otp_utils import generate_otp, hash_otp, OTP_TTL_SECONDS, MAX_ATTEMPTS
-from otp_delivery import send_otp_email
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/company-login", tags=["company_admin_login"])
-
-COOLDOWN_SECONDS = 30
 
 
 class RequestOTPRequest(BaseModel):

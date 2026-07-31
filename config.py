@@ -6,12 +6,11 @@ class Settings(BaseSettings):
     REDIS_HOST: str = "redis"
     REDIS_PORT: int = 6379
 
-    # SMTP / Email OTP
-    SMTP_HOST: str = "smtp.gmail.com"
-    SMTP_PORT: int = 587
-    SMTP_USERNAME: str
-    SMTP_PASSWORD: str
-    SMTP_FROM_EMAIL: str
+    # Wigal / SMS OTP
+    WIGAL_BASE_URL: str = "https://frogapi.wigal.com.gh"
+    WIGAL_USERNAME: str
+    WIGAL_API_KEY: str
+    WIGAL_SENDER_ID: str
 
     # S3 / MinIO
     S3_ENDPOINT_URL: str = "http://minio:9000"
