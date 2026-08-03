@@ -38,3 +38,9 @@ class InsuranceCompanyModel(BaseModel):
 class InsuranceCompanyUpdate(BaseModel):
     name: Optional[str] = None
     logo: Optional[Union[LogoData, str]] = None
+    emails: Optional[list[str]] = None
+    phone_numbers: Optional[list[str]] = None
+    digital_address: Optional[str] = None
+    address_line_1: Optional[str] = None
+    country: Optional[str] = None
+    address_line_2: Optional[str] = None

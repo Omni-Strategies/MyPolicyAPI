@@ -64,6 +64,7 @@ def get_all_quotes_by_company(session: Session, company_id: uuid.UUID) -> List[Q
                 .joinedload(InsuranceRequests.customers),
                 joinedload(Quotes.insurance_request)
                 .joinedload(InsuranceRequests.insurance_product),
+                joinedload(Quotes.insurance_company)
             )
             .filter(Quotes.insurance_company_id == company_id)
             
@@ -97,6 +98,7 @@ def get_quote_with_details(session: Session, quote_id: uuid.UUID) -> Optional[Qu
                 .joinedload(InsuranceRequests.customers),
                 joinedload(Quotes.insurance_request)
                 .joinedload(InsuranceRequests.insurance_product),
+                joinedload(Quotes.insurance_company)
             )
             .filter(Quotes.id == quote_id)
             .first()
