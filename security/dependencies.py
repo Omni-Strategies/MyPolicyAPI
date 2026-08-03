@@ -1,12 +1,16 @@
 from fastapi import Depends, HTTPException
-from fastapi.security import OAuth2PasswordBearer
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jose import jwt, JWTError
 from security.auth import *
 
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="auth/login")
+# Swagger Authorize → paste JWT (access_token) as Bearer value
+bearer_scheme = HTTPBearer(auto_error=True)
 
 
-def get_current_user(token: str = Depends(oauth2_scheme)):
+def get_current_user(
+    credentials: HTTPAuthorizationCredentials = Depends(bearer_scheme),
+):
+    token = credentials.credentials
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         user_id = payload.get("sub")
@@ -44,3 +48,14 @@ def require_role(*allowed_roles: str):
 customer_required = require_role("customer")
 company_admin_required = require_role("company_admin")
 admin_required = require_role("admin")  # only "admin" bypasses in role_checker anyway
+
+
+def assert_company_owns(company_id, current_user: dict) -> None:
+    """Raise 403 unless the JWT subject is this company (admins bypass)."""
+    if current_user.get("account_type") == "admin":
+        return
+    if str(company_id) != str(current_user.get("id")):
+        raise HTTPException(
+            status_code=403,
+            detail="Not authorized to access this company's resources",
+        )

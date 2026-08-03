@@ -40,6 +40,22 @@ services:
       "
     restart: "no"
 
+  minio-init:
+    image: minio/mc
+    depends_on:
+      - minio
+    restart: "no"
+    entrypoint: >
+      /bin/sh -c "
+      until mc alias set local http://minio:9000 minioadmin minioadmin; do
+        echo 'waiting for minio...';
+        sleep 1;
+      done;
+      mc mb -p local/mypolicy-documents || true;
+      mc anonymous set download local/mypolicy-documents || true;
+      echo 'minio bucket ready';
+      "
+
   api:
     build:
       context: ./
@@ -63,6 +79,17 @@ services:
       DB_NAME: ${DB_NAME}
       DB_SSL: ${DB_SSL:-true}
       # S3_*, WIGAL_*, SMTP_* all come from env_file: .env below
+    env_file: .env
+    environment:
+      LOG_DIR: /app/logs
+      DB_HOST: mypolicy-db
+      DB_PORT: 5432
+      S3_ENDPOINT_URL: http://minio:9000
+      S3_PUBLIC_ENDPOINT_URL: http://localhost:9000
+      S3_ACCESS_KEY: minioadmin
+      S3_SECRET_KEY: minioadmin
+      S3_BUCKET: mypolicy-documents
+      # WIGAL_* (including WIGAL_SMS_MOCK) come from env_file: .env
     restart: unless-stopped
 
   pgadmin:
@@ -96,10 +123,14 @@ services:
       POSTGRES_DB: mypolicy
       POSTGRES_INITDB_ARGS: "-c password_encryption=scram-sha-256 -c ssl=off"
     volumes:
-      - ./init-auth.sh:/docker-entrypoint-initdb.d/00-init-auth.sh
+      # Use .sql only — bind-mounted .sh scripts often fail on Docker Desktop
+      # ("bad interpreter: Permission denied") and abort the rest of init.
       - ./db.sql:/docker-entrypoint-initdb.d/01-init.sql
-      - ./seeds:/docker-entrypoint-initdb.d/seeds
-      - ./seeds/init-seeds.sh:/docker-entrypoint-initdb.d/02-init-seeds.sh
+      - ./seeds/01-seed-countries.sql:/docker-entrypoint-initdb.d/02-seed-countries.sql
+      - ./seeds/02-seed-banks.sql:/docker-entrypoint-initdb.d/03-seed-banks.sql
+      - ./seeds/03-insurance-company-seed.sql:/docker-entrypoint-initdb.d/04-insurance-company-seed.sql
+      - ./seeds/04-example-data.sql:/docker-entrypoint-initdb.d/05-example-data.sql
+      - ./seeds/05-seed-payments.sql:/docker-entrypoint-initdb.d/06-seed-payments.sql
       - pgdata:/var/lib/postgresql/data
 
 volumes:

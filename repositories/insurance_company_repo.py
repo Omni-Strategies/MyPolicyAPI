@@ -1,7 +1,10 @@
 from typing import List, Optional
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
-from models.models import Base, Quotes, InsuranceRequests, InsuranceCompanies 
-from schemas import insurance_company_schema, requests_schema
+from models.models import InsuranceCompanies
+from schemas import insurance_company_schema
+from s3_client import upload_logo
+from otp_delivery import normalize_phone, phone_lookup_variants
 import uuid
 import logging
 import base64
@@ -25,35 +28,58 @@ def upload_logo(company_id: str, file_bytes: bytes, file_name: str) -> str:
     s3.put_object(Bucket=settings.S3_BUCKET, Key=key, Body=file_bytes)
     return key
 
+class InsuranceCompanyConflictError(Exception):
+    """Raised when email or phone already belongs to another company."""
+
+
+def _email_or_phone_taken(
+    session: Session,
+    emails: list[str],
+    phone_numbers: list[str],
+) -> Optional[str]:
+    for email in emails or []:
+        if get_insurance_company_by_email(session, email):
+            return f"Email already registered: {email}"
+    for phone in phone_numbers or []:
+        if get_insurance_company_by_phone_number(session, phone):
+            return f"Phone number already registered: {phone}"
+    return None
+
+
 def create_insurance_company(session: Session, company_data: insurance_company_schema.InsuranceCompanyCreate) -> InsuranceCompanies:
-    logo_value = company_data.logo
-    if isinstance(logo_value, LogoData):
-        logo_value = logo_value.base64
-
-    phone_numbers = ["233" + str(num).removeprefix("0") for num in company_data.phone_numbers]
-
-    company = InsuranceCompanies(
-        name=company_data.name,
-        logo=logo_value,
-        emails=company_data.emails,
-        phone_numbers=phone_numbers,
-        digital_address=company_data.digital_address,
-        address_line_1=company_data.address_line_1,
-        address_line_2=company_data.address_line_2,
-        country=company_data.country,
-    )
-
     try:
-        session.add(company)
+        data = company_data.dict()
+        data["phone_numbers"] = [
+            normalize_phone(p) for p in (data.get("phone_numbers") or []) if normalize_phone(p)
+        ]
+
+        conflict = _email_or_phone_taken(
+            session,
+            data.get("emails") or [],
+            data.get("phone_numbers") or [],
+        )
+        if conflict:
+            raise InsuranceCompanyConflictError(conflict)
+
+        data["logo"] = upload_logo(data.get("logo"))
+
+        db_insurance_company = InsuranceCompanies(**data)
+        session.add(db_insurance_company)
         session.commit()
-        logger.info(f"Insurance company created with ID: {company.id}")
-        return company
+        session.refresh(db_insurance_company)
+        logger.info(f"Insurance company created with ID: {db_insurance_company.id}")
+        return db_insurance_company
+    except InsuranceCompanyConflictError:
+        session.rollback()
+        raise
     except Exception as e:
         logger.error(f"Error occurred while creating insurance company: {e}")
         session.rollback()
         raise
 
 
+def get_insurance_company(session: Session, company_id: uuid.UUID) -> Optional[InsuranceCompanies]:
+    return get_insurance_company_by_id(session, company_id)
 
 
 def get_insurance_company_by_id(session: Session, company_id: uuid.UUID) -> Optional[InsuranceCompanies]:
@@ -147,9 +173,13 @@ def get_insurance_company_by_phone_number(
     phone_number: str
 ) -> Optional[InsuranceCompanies]:
     try:
+        variants = phone_lookup_variants(phone_number)
+        if not variants:
+            return None
+
         company = (
             session.query(InsuranceCompanies)
-            .filter(InsuranceCompanies.phone_numbers.any(phone_number))
+            .filter(or_(*[InsuranceCompanies.phone_numbers.any(v) for v in variants]))
             .first()
         )
 
@@ -183,7 +213,11 @@ def update_insurance_company(session: Session, company_id: uuid.UUID, updates: i
             logger.warning(f"No insurance company found with ID: {company_id}")
             return None
 
-        for key, value in updates.dict(exclude_unset=True).items():
+        data = updates.dict(exclude_unset=True)
+        if "logo" in data:
+            data["logo"] = upload_logo(data.get("logo"))
+
+        for key, value in data.items():
             setattr(company, key, value)
 
         session.commit()
