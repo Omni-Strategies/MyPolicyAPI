@@ -1,5 +1,5 @@
 from pydantic import BaseModel
-from typing import Union
+from typing import Union, Optional
 
 
 
@@ -10,7 +10,13 @@ class LogoData(BaseModel):
 
 class InsuranceCompanyCreate(BaseModel):
     name: str
-    logo: Union[LogoData, str]
+    logo: Optional[Union[LogoData, str]]
+    emails: list[str]
+    phone_numbers: list[str]
+    digital_address: str
+    address_line_1: str
+    country: str
+    address_line_2: Optional[str]
 
 
 class InsuranceCompany(BaseModel):
@@ -30,5 +36,11 @@ class InsuranceCompanyModel(BaseModel):
 
 
 class InsuranceCompanyUpdate(BaseModel):
-    name: str
-    logo: str
+    name: Optional[str] = None
+    logo: Optional[Union[LogoData, str]] = None
+    emails: Optional[list[str]] = None
+    phone_numbers: Optional[list[str]] = None
+    digital_address: Optional[str] = None
+    address_line_1: Optional[str] = None
+    country: Optional[str] = None
+    address_line_2: Optional[str] = None

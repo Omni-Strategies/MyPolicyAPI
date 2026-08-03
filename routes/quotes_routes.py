@@ -61,7 +61,7 @@ def get_all_quotes_endpoint(
     current_user=Depends(company_admin_required)
 ):
     try:
-        quotes = repo_get_all_quotes(db, company_id)
+        quotes = repo_get_all_quotes_by_company(db, company_id)
         return quotes
     except Exception as e:
         logger.error(f"Error fetching all quotes: {str(e)}", exc_info=True)

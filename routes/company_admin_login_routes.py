@@ -24,21 +24,20 @@ class RequestOTPRequest(BaseModel):
 
 
 class VerifyOTPRequest(BaseModel):
-    email: str
+    phone_number: str
     otp: str
 
 
-@router.post("/company-admin-login/request-otp")
+
+@router.post("/request-otp")
 def request_otp(request: RequestOTPRequest, db: Session = Depends(get_db)):
-    company_admin = get_insurance_company_by_email(db, request.email)
+    phone_number = "233" + str(request.phone_number).removeprefix("0")
+    print(f"Requesting OTP for email: {request.email}, phone number: {phone_number}")
+    company_admin = get_insurance_company_by_email_and_phone(db, request.email, phone_number)
 
     if not company_admin:
         raise HTTPException(status_code=401, detail="Invalid credentials")
 
-    stored_numbers = [str(p) for p in (company_admin.phone_numbers or [])]
-    if str(request.phone_number) not in stored_numbers:
-        raise HTTPException(status_code=401, detail="Invalid credentials")
-    
     cooldown_key = f"otp_cooldown:{company_admin.id}"
     if redis_client.exists(cooldown_key):
         ttl = redis_client.ttl(cooldown_key)
@@ -58,10 +57,13 @@ def request_otp(request: RequestOTPRequest, db: Session = Depends(get_db)):
     return {"message": "OTP sent via email"}
 
 
-@router.post("/company-admin-login/verify-otp")
+@router.post("/verify-otp")
 def verify_otp(request: VerifyOTPRequest, db: Session = Depends(get_db)):
-    company_admin = get_insurance_company_by_email(db, request.email)
+    company_admin = get_insurance_company_by_phone_number(db, request.phone_number)
     if not company_admin:
+        phone_number = "233" + str(request.phone_number).removeprefix("0")
+        company_admin = get_insurance_company_by_phone_number(db, phone_number)
+    else:
         raise HTTPException(status_code=401, detail="Invalid credentials")
 
     key = f"otp:{company_admin.id}"
