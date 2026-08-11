@@ -3,8 +3,6 @@ from .insuranceProduct_schema import insuranceProductModelInterface
 from .insurance_company_schema import InsuranceCompanyModel
 from pydantic import BaseModel
 
-
-
 class insuranceCommissionCreateInterface(BaseModel):
     insurance_company_id: str
     agent_rate: float

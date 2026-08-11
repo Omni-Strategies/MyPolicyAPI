@@ -6,8 +6,7 @@ from repositories.customer_repo import (create_customer, get_customer, update_cu
 def test_create_customer_success():
     mock_session = MagicMock()
     mock_customer = MagicMock()
-    mock_customer.password = "plaintext-password"
-    mock_customer.dict.return_value = {"first_name": "John", "last_name": "Doe", "email": "john.doe@example.com"}
+    mock_customer.dict.return_value = {"first_name": "John", "last_name": "Doe", "email": "john.doe@example.com"} 
     create_customer(mock_session, mock_customer)
     mock_session.add.assert_called_once()
     mock_session.commit.assert_called_once()
