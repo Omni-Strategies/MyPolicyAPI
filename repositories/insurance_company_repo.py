@@ -9,15 +9,15 @@ logger = logging.getLogger(__name__)
 
 
 def create_insurance_company(session: Session, company_data: insurance_company_schema.InsuranceCompanyCreate) -> InsuranceCompanies:
-    db_insurance_company = Quotes(**company_data.dict())
+    db_insurance_company = InsuranceCompanies(**company_data.dict())
     try:
             session.add(db_insurance_company)
             session.commit()
             session.refresh(db_insurance_company)
-            logger.info(f"Quote created with ID: {db_insurance_company.id}")
+            logger.info(f"Insurance company created with ID: {db_insurance_company.id}")
             return db_insurance_company
     except Exception as e:
-            logger.error(f"Error occurred while creating quote: {e}")
+            logger.error(f"Error occurred while creating insurance company: {e}")
             session.rollback()
             raise
 
