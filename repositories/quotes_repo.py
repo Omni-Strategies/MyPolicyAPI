@@ -8,7 +8,11 @@ import logging
 logger = logging.getLogger(__name__)
 
 def create_quote(session: Session, quote: quotes_schema.quoteCreateInterface, company_id: uuid.UUID) -> Quotes:
-    db_quote = Quotes(**quote.dict(), insurance_company_id=company_id)
+    db_quote = Quotes(
+        **quote.dict(by_alias=False),
+        insurance_company_id=company_id,
+        agent_commission=None,
+    )
     try:
         session.add(db_quote)
         session.commit()
@@ -19,8 +23,17 @@ def create_quote(session: Session, quote: quotes_schema.quoteCreateInterface, co
         logger.error(f"Error occurred while creating quote: {e}")
         session.rollback()
         raise
+
+
 def create_quote_batch(session: Session, quote_batch: quotes_schema.QuoteBatchCreate, company_id: uuid.UUID) -> List[Quotes]:
-    db_quotes = [Quotes(**quote.dict(), insurance_company_id=company_id) for quote in quote_batch.items]
+    db_quotes = [
+        Quotes(
+            **quote.dict(by_alias=False),
+            insurance_company_id=company_id,
+            agent_commission=None,
+        )
+        for quote in quote_batch.items
+    ]
     try:
         session.add_all(db_quotes)
         session.commit()
@@ -51,6 +64,7 @@ def get_all_quotes_by_company(session: Session, company_id: uuid.UUID) -> List[Q
                 .joinedload(InsuranceRequests.customers),
                 joinedload(Quotes.insurance_request)
                 .joinedload(InsuranceRequests.insurance_product),
+                joinedload(Quotes.insurance_company)
             )
             .filter(Quotes.insurance_company_id == company_id)
             
@@ -84,6 +98,7 @@ def get_quote_with_details(session: Session, quote_id: uuid.UUID) -> Optional[Qu
                 .joinedload(InsuranceRequests.customers),
                 joinedload(Quotes.insurance_request)
                 .joinedload(InsuranceRequests.insurance_product),
+                joinedload(Quotes.insurance_company)
             )
             .filter(Quotes.id == quote_id)
             .first()

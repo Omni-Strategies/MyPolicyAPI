@@ -19,6 +19,42 @@ services:
     command: server /data --console-address ":9001"
     volumes:
       - minio_data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  minio-init:
+    image: minio/mc
+    container_name: mypolicy-minio-init
+    depends_on:
+      minio:
+        condition: service_started
+    entrypoint: >
+      /bin/sh -c "
+      until mc alias set local http://minio:9000 minioadmin minioadmin; do echo 'waiting for minio...'; sleep 1; done;
+      mc mb --ignore-existing local/mypolicy-documents;
+      echo 'bucket ready';
+      exit 0;
+      "
+    restart: "no"
+
+  minio-init:
+    image: minio/mc
+    depends_on:
+      - minio
+    restart: "no"
+    entrypoint: >
+      /bin/sh -c "
+      until mc alias set local http://minio:9000 minioadmin minioadmin; do
+        echo 'waiting for minio...';
+        sleep 1;
+      done;
+      mc mb -p local/mypolicy-documents || true;
+      mc anonymous set download local/mypolicy-documents || true;
+      echo 'minio bucket ready';
+      "
 
   api:
     build:
@@ -29,9 +65,20 @@ services:
     volumes:
       - uploads:/app/public/images
     depends_on:
-      - mypolicy-db
       - redis
       - minio
+      - minio-init
+      # add "- mypolicy-db" back below if USE_LOCAL_DB=true (see note at bottom)
+    env_file: .env
+    environment:
+      LOG_DIR: /app/logs
+      DB_HOST: ${DB_HOST}
+      DB_PORT: ${DB_PORT}
+      DB_USER: ${DB_USERNAME}
+      DB_PASSWORD: ${DB_PASSWORD}
+      DB_NAME: ${DB_NAME}
+      DB_SSL: ${DB_SSL:-true}
+      # S3_*, WIGAL_*, SMTP_* all come from env_file: .env below
     env_file: .env
     environment:
       LOG_DIR: /app/logs
@@ -42,6 +89,7 @@ services:
       S3_ACCESS_KEY: minioadmin
       S3_SECRET_KEY: minioadmin
       S3_BUCKET: mypolicy-documents
+      # WIGAL_* (including WIGAL_SMS_MOCK) come from env_file: .env
     restart: unless-stopped
 
   pgadmin:
@@ -53,9 +101,16 @@ services:
     environment:
       PGADMIN_DEFAULT_EMAIL: wonder@mail.com
       PGADMIN_DEFAULT_PASSWORD: killmonger!0
-    depends_on:
-      - mypolicy-db
+    # No depends_on on mypolicy-db anymore — add a server manually in
+    # pgAdmin's UI pointing at either localhost:5436 or your RDS endpoint.
 
+  # -------------------------------------------------------------------
+  # Local Postgres — optional. Only needed if you want a local db for
+  # dev/testing separate from AWS RDS. Leave it running and just point
+  # DB_HOST at RDS in .env when you want prod data; docker compose will
+  # keep this container idle in the background if unused.
+  # To fully remove it: delete this block + the "pgdata" volume below.
+  # -------------------------------------------------------------------
   mypolicy-db:
     container_name: mypolicy-dbV2
     image: postgres:16
@@ -68,10 +123,14 @@ services:
       POSTGRES_DB: mypolicy
       POSTGRES_INITDB_ARGS: "-c password_encryption=scram-sha-256 -c ssl=off"
     volumes:
-      - ./init-auth.sh:/docker-entrypoint-initdb.d/00-init-auth.sh
+      # Use .sql only — bind-mounted .sh scripts often fail on Docker Desktop
+      # ("bad interpreter: Permission denied") and abort the rest of init.
       - ./db.sql:/docker-entrypoint-initdb.d/01-init.sql
-      - ./seeds:/docker-entrypoint-initdb.d/seeds
-      - ./seeds/init-seeds.sh:/docker-entrypoint-initdb.d/02-init-seeds.sh
+      - ./seeds/01-seed-countries.sql:/docker-entrypoint-initdb.d/02-seed-countries.sql
+      - ./seeds/02-seed-banks.sql:/docker-entrypoint-initdb.d/03-seed-banks.sql
+      - ./seeds/03-insurance-company-seed.sql:/docker-entrypoint-initdb.d/04-insurance-company-seed.sql
+      - ./seeds/04-example-data.sql:/docker-entrypoint-initdb.d/05-example-data.sql
+      - ./seeds/05-seed-payments.sql:/docker-entrypoint-initdb.d/06-seed-payments.sql
       - pgdata:/var/lib/postgresql/data
 
 volumes:

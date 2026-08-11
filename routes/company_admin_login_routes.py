@@ -1,19 +1,17 @@
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 import logging
-import requests
-import json
-import os
 from security.auth import create_access_token
 from database import get_db
-from models.models import *
-from schemas import insurance_company_schema
 from sqlalchemy.orm import Session
-from security.dependencies import *
-from repositories.insurance_company_repo import *
+from repositories.insurance_company_repo import (
+    get_insurance_company_by_email,
+    get_insurance_company_by_phone_number,
+)
 from redis_client import redis_client
 from otp_utils import generate_otp, hash_otp, OTP_TTL_SECONDS, MAX_ATTEMPTS
-from otp_delivery import send_otp_email
+from otp_delivery import send_otp_sms, normalize_phone
+from config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -32,90 +30,82 @@ class VerifyOTPRequest(BaseModel):
     otp: str
 
 
+def _otp_key(phone_number: str) -> str:
+    return f"company_otp:{normalize_phone(phone_number)}"
+
+
+def _cooldown_key(phone_number: str) -> str:
+    return f"company_otp_cooldown:{normalize_phone(phone_number)}"
+
+
+def _phone_matches_stored(request_phone: str, stored_numbers: list) -> bool:
+    want = normalize_phone(request_phone)
+    return any(normalize_phone(str(p)) == want for p in (stored_numbers or []))
+
+
 @router.post("/request-otp")
 def request_otp(request: RequestOTPRequest, db: Session = Depends(get_db)):
-    company_admin = get_insurance_company_by_email(db, request.email)
+    phone_number = "233" + str(request.phone_number).removeprefix("0")
+    print(f"Requesting OTP for email: {request.email}, phone number: {phone_number}")
+    company_admin = get_insurance_company_by_email_and_phone(db, request.email, phone_number)
 
     if not company_admin:
         raise HTTPException(status_code=401, detail="Invalid credentials")
 
-    stored_numbers = [str(p) for p in (company_admin.phone_numbers or [])]
-    if str(request.phone_number) not in stored_numbers:
+    phone = normalize_phone(request.phone_number)
+    if not phone or not _phone_matches_stored(phone, company_admin.phone_numbers or []):
         raise HTTPException(status_code=401, detail="Invalid credentials")
-    post_data = {
-        "number": request.phone_number,
-        "expiry": 1,
-        "length": 6,
-        "messagetemplate": "Hello, your OTP is : %OTPCODE%. It will expire after %EXPIRY% mins",
-        "type": "ALPHANUMERIC",
-        "senderid": os.getenv("WIGAL_SENDER_ID"),
-    }
 
-    headers = {
-        "Content-Type": "application/json",
-        "API-KEY": os.getenv("WIGAL_KEY"),
-        "USERNAME": os.getenv("WIGAL_USERNAME"),
-    }
+    cooldown_key = _cooldown_key(phone)
+    if redis_client.exists(cooldown_key):
+        raise HTTPException(status_code=429, detail="Please wait before requesting another OTP")
+
+    otp = generate_otp()
+    key = _otp_key(phone)
 
     try:
-        response = requests.post(
-            "https://frogapi.wigal.com.gh/api/v3/sms/otp/generate",
-            headers=headers,
-            data=json.dumps(post_data),
-            timeout=10,
-        )
-    except requests.RequestException as e:
-        logger.error(f"Wigal OTP request failed: {e}")
-        raise HTTPException(status_code=502, detail="Failed to reach OTP provider")
+        send_otp_sms(phone, otp)
+    except Exception as e:
+        logger.error(f"Failed to send OTP SMS to {phone}: {e}")
+        raise HTTPException(status_code=502, detail=str(e) or "Failed to send OTP SMS")
 
-    print(f"[request_otp] status: {response.status_code}")
+    redis_client.hset(key, mapping={"otp_hash": hash_otp(otp), "attempts": 0})
+    redis_client.expire(key, OTP_TTL_SECONDS)
+    redis_client.set(cooldown_key, "1", ex=COOLDOWN_SECONDS)
 
-    if response.status_code != 200:
-        logger.error(
-            f"Wigal OTP generate failed [{response.status_code}]: {response.text}"
-        )
-        raise HTTPException(status_code=502, detail="OTP provider error")
-
-    data = response.json()
-    logger.info(f"OTP requested for {request.phone_number}")
-    return data
+    logger.info(f"OTP requested for {phone}")
+    response = {"message": "OTP sent via SMS"}
+    if settings.WIGAL_SMS_MOCK:
+        response["otp"] = otp  # local/dev only
+    return response
 
 
 @router.post("/verify-otp")
 def verify_otp(request: VerifyOTPRequest, db: Session = Depends(get_db)):
-    company_admin = get_insurance_company_by_phone_number(db, request.phone_number)
-    post_data = {
-        "otpcode": request.otp,
-        "number": request.phone_number,
-    }
+    phone = normalize_phone(request.phone_number)
+    company_admin = get_insurance_company_by_phone_number(db, phone)
+    if not company_admin:
+        phone_number = "233" + str(request.phone_number).removeprefix("0")
+        company_admin = get_insurance_company_by_phone_number(db, phone_number)
+    else:
+        raise HTTPException(status_code=401, detail="Invalid credentials")
 
-    headers = {
-        "Content-Type": "application/json",
-        "API-KEY": os.getenv("WIGAL_KEY"),
-        "USERNAME": os.getenv("WIGAL_USERNAME"),
-    }
+    key = _otp_key(phone)
+    stored = redis_client.hgetall(key)
+    if not stored:
+        raise HTTPException(status_code=400, detail="OTP expired or not found")
 
-    try:
-        response = requests.post(
-            "https://frogapi.wigal.com.gh/api/v3/sms/otp/verify",
-            headers=headers,
-            data=json.dumps(post_data),
-            timeout=10,
-        )
-    except requests.RequestException as e:
-        logger.error(f"Wigal OTP verify failed: {e}")
-        raise HTTPException(status_code=502, detail="Failed to reach OTP provider")
+    attempts = int(stored.get("attempts", 0))
+    if attempts >= MAX_ATTEMPTS:
+        redis_client.delete(key)
+        raise HTTPException(status_code=400, detail="Too many invalid attempts")
 
-    print(f"[verify_otp] status: {response.status_code}")
-
-    if response.status_code != 200:
-        logger.error(
-            f"Wigal OTP verify failed [{response.status_code}]: {response.text}"
-        )
+    if hash_otp(request.otp) != stored.get("otp_hash"):
+        redis_client.hincrby(key, "attempts", 1)
         raise HTTPException(status_code=400, detail="OTP verification failed")
 
-    data = response.json()
-    logger.info(f"OTP verified for {request.phone_number}")
+    redis_client.delete(key)
+    logger.info(f"OTP verified for {phone}")
 
     return {
         "access_token": create_access_token({
