@@ -51,7 +51,6 @@ def create_insurance_company(session: Session, company_data: insurance_company_s
         data = company_data.dict()
         data["phone_numbers"] = [
             normalize_phone(p) for p in (data.get("phone_numbers") or []) if normalize_phone(p)
-        ]
 
         conflict = _email_or_phone_taken(
             session,
