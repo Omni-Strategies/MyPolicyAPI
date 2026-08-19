@@ -9,8 +9,8 @@ from repositories.insurance_company_repo import (
     get_insurance_company_by_phone_number,
 )
 from redis_client import redis_client
-from otp_utils import generate_otp, hash_otp, OTP_TTL_SECONDS, MAX_ATTEMPTS
-from otp_delivery import send_otp_sms, normalize_phone
+from otp_utils import hash_otp, OTP_TTL_SECONDS, MAX_ATTEMPTS
+from otp_delivery import request_otp_sms, verify_otp_sms, normalize_phone
 from config import settings
 
 logger = logging.getLogger(__name__)
@@ -45,10 +45,7 @@ def _phone_matches_stored(request_phone: str, stored_numbers: list) -> bool:
 
 @router.post("/request-otp")
 def request_otp(request: RequestOTPRequest, db: Session = Depends(get_db)):
-    phone_number = "233" + str(request.phone_number).removeprefix("0")
-    print(f"Requesting OTP for email: {request.email}, phone number: {phone_number}")
-    company_admin = get_insurance_company_by_email_and_phone(db, request.email, phone_number)
-
+    company_admin = get_insurance_company_by_email(db, request.email)
     if not company_admin:
         raise HTTPException(status_code=401, detail="Invalid credentials")
 
@@ -60,22 +57,24 @@ def request_otp(request: RequestOTPRequest, db: Session = Depends(get_db)):
     if redis_client.exists(cooldown_key):
         raise HTTPException(status_code=429, detail="Please wait before requesting another OTP")
 
-    otp = generate_otp()
     key = _otp_key(phone)
 
     try:
-        send_otp_sms(phone, otp)
+        otp = request_otp_sms(phone)
     except Exception as e:
         logger.error(f"Failed to send OTP SMS to {phone}: {e}")
         raise HTTPException(status_code=502, detail=str(e) or "Failed to send OTP SMS")
 
-    redis_client.hset(key, mapping={"otp_hash": hash_otp(otp), "attempts": 0})
+    mapping = {"attempts": 0}
+    if otp:
+        mapping["otp_hash"] = hash_otp(otp)
+    redis_client.hset(key, mapping=mapping)
     redis_client.expire(key, OTP_TTL_SECONDS)
     redis_client.set(cooldown_key, "1", ex=COOLDOWN_SECONDS)
 
     logger.info(f"OTP requested for {phone}")
     response = {"message": "OTP sent via SMS"}
-    if settings.WIGAL_SMS_MOCK:
+    if settings.WIGAL_SMS_MOCK and otp:
         response["otp"] = otp  # local/dev only
     return response
 
@@ -85,9 +84,6 @@ def verify_otp(request: VerifyOTPRequest, db: Session = Depends(get_db)):
     phone = normalize_phone(request.phone_number)
     company_admin = get_insurance_company_by_phone_number(db, phone)
     if not company_admin:
-        phone_number = "233" + str(request.phone_number).removeprefix("0")
-        company_admin = get_insurance_company_by_phone_number(db, phone_number)
-    else:
         raise HTTPException(status_code=401, detail="Invalid credentials")
 
     key = _otp_key(phone)
@@ -100,9 +96,18 @@ def verify_otp(request: VerifyOTPRequest, db: Session = Depends(get_db)):
         redis_client.delete(key)
         raise HTTPException(status_code=400, detail="Too many invalid attempts")
 
-    if hash_otp(request.otp) != stored.get("otp_hash"):
-        redis_client.hincrby(key, "attempts", 1)
-        raise HTTPException(status_code=400, detail="OTP verification failed")
+    if settings.WIGAL_SMS_MOCK:
+        if hash_otp(request.otp) != stored.get("otp_hash"):
+            redis_client.hincrby(key, "attempts", 1)
+            raise HTTPException(status_code=400, detail="OTP verification failed")
+    else:
+        try:
+            verify_otp_sms(phone, request.otp)
+        except Exception as e:
+            redis_client.hincrby(key, "attempts", 1)
+            detail = str(e) or "OTP verification failed"
+            status = 400 if "expired" in detail.lower() or "verification" in detail.lower() else 502
+            raise HTTPException(status_code=status, detail=detail)
 
     redis_client.delete(key)
     logger.info(f"OTP verified for {phone}")

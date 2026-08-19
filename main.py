@@ -19,7 +19,8 @@ from routes import (
     insurance_types_routes,
     countries_routes,
     insurance_commissions_routes,
-    policies_routes
+    policies_routes,
+    analytics_routes,
 )
 import os
 
@@ -81,3 +82,4 @@ app.include_router(insurance_types_routes.router)
 app.include_router(countries_routes.router)
 app.include_router(insurance_commissions_routes.router)
 app.include_router(policies_routes.router)
+app.include_router(analytics_routes.router)

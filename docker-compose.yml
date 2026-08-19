@@ -40,21 +40,21 @@ services:
       "
     restart: "no"
 
-  minio-init:
-    image: minio/mc
-    depends_on:
-      - minio
-    restart: "no"
-    entrypoint: >
-      /bin/sh -c "
-      until mc alias set local http://minio:9000 minioadmin minioadmin; do
-        echo 'waiting for minio...';
-        sleep 1;
-      done;
-      mc mb -p local/mypolicy-documents || true;
-      mc anonymous set download local/mypolicy-documents || true;
-      echo 'minio bucket ready';
-      "
+  # minio-init:
+  #   image: minio/mc
+  #   depends_on:
+  #     - minio
+  #   restart: "no"
+  #   entrypoint: >
+  #     /bin/sh -c "
+  #     until mc alias set local http://minio:9000 minioadmin minioadmin; do
+  #       echo 'waiting for minio...';
+  #       sleep 1;
+  #     done;
+  #     mc mb -p local/mypolicy-documents || true;
+  #     mc anonymous set download local/mypolicy-documents || true;
+  #     echo 'minio bucket ready';
+  #     "
 
   api:
     build:
@@ -69,15 +69,15 @@ services:
       - minio
       - minio-init
       # add "- mypolicy-db" back below if USE_LOCAL_DB=true (see note at bottom)
-    env_file: .env
-    environment:
-      LOG_DIR: /app/logs
-      DB_HOST: ${DB_HOST}
-      DB_PORT: ${DB_PORT}
-      DB_USER: ${DB_USERNAME}
-      DB_PASSWORD: ${DB_PASSWORD}
-      DB_NAME: ${DB_NAME}
-      DB_SSL: ${DB_SSL:-true}
+    # env_file: .env
+    # environment:
+    #   LOG_DIR: /app/logs
+    #   DB_HOST: ${DB_HOST}
+    #   DB_PORT: ${DB_PORT}
+    #   DB_USER: ${DB_USERNAME}
+    #   DB_PASSWORD: ${DB_PASSWORD}
+    #   DB_NAME: ${DB_NAME}
+    #   DB_SSL: ${DB_SSL:-true}
       # S3_*, WIGAL_*, SMTP_* all come from env_file: .env below
     env_file: .env
     environment:
