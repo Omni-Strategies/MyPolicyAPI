@@ -2,7 +2,7 @@ dotenv
 sqlalchemy
 fastapi
 uvicorn
-psycopg2-binary
+psycopg[binary]
 pyyaml
 pytest
 pytest-cov
