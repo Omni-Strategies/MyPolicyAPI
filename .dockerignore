@@ -11,3 +11,6 @@ __pycache__
 test_requests.txt
 .coverage
 app.log
+.env.*
+.env-*
+!.env.example
