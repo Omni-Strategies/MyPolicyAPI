@@ -1,0 +1,91 @@
+# Deploys this repo to Google Cloud Run service "mypolicyapi".
+# Keyless: GitHub OIDC -> Workload Identity Federation (only Omni-Strategies, main, this file).
+# Runtime settings/secrets live in Cloud Run + Secret Manager, never in the image.
+name: deploy-gcp
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: cloudrun-mypolicyapi
+  cancel-in-progress: false
+
+env:
+  PROJECT_ID: aws-backup-514614
+  REGION: us-east4
+  SERVICE: mypolicyapi
+  IMAGE: us-east4-docker.pkg.dev/aws-backup-514614/lifeboat/mypolicyapi
+  HEALTH_PATH: /docs
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Secret scan (report-only for now)
+        continue-on-error: true
+        run: |
+          docker run --rm -v "$PWD:/repo" zricethezav/gitleaks:v8.30.1 detect --source /repo --no-git --redact --exit-code 1 || echo "::warning::gitleaks found possible secrets (redacted) - see log"
+
+      - name: No baked settings (runtime config comes from Cloud Run / Secret Manager)
+        run: ': > .env'
+
+      - id: auth
+        uses: google-github-actions/auth@c200f3691d83b41bf9bbd8638997a462592937ed # v2
+        with:
+          workload_identity_provider: projects/540499850815/locations/global/workloadIdentityPools/github/providers/github-oidc
+          service_account: gha-mypolicyapi@aws-backup-514614.iam.gserviceaccount.com
+
+      - uses: google-github-actions/setup-gcloud@e427ad8a34f8676edf47cf7d7925499adf3eb74f # v2
+
+      - name: Build and push image
+        run: |
+          gcloud auth configure-docker us-east4-docker.pkg.dev --quiet
+          docker build --platform linux/amd64 -t "$IMAGE:${{ github.sha }}" .
+          if docker run --rm --entrypoint sh "$IMAGE:${{ github.sha }}" -c 'find / -xdev -name .env -size +0 2>/dev/null | grep -q .'; then
+            echo "::error::Image contains a non-empty .env file - refusing to deploy"; exit 1; fi
+          docker push "$IMAGE:${{ github.sha }}"
+
+      - name: Record current revision (for rollback)
+        id: prev
+        run: echo "rev=$(gcloud run services describe $SERVICE --region $REGION --format='value(status.traffic[0].revisionName)')" >> "$GITHUB_OUTPUT"
+
+      - name: Deploy new revision without traffic (tagged)
+        run: |
+          gcloud run deploy $SERVICE --region $REGION --image "$IMAGE:${{ github.sha }}" --no-traffic --tag candidate --quiet
+
+      - name: Smoke test the new revision
+        id: smoke
+        run: |
+          URL=$(gcloud run services describe $SERVICE --region $REGION --format=json | python3 -c 'import json,sys; print([t["url"] for t in json.load(sys.stdin)["status"]["traffic"] if t.get("tag")=="candidate"][0])')
+          for i in 1 2 3 4 5 6 7 8 9 10; do
+            code=$(curl -s -o /dev/null -w '%{http_code}' "$URL$HEALTH_PATH" || true)
+            echo "attempt $i: $code"; [ "$code" = "200" ] && exit 0; sleep 10
+          done
+          exit 1
+
+      - name: Shift traffic to the new revision
+        run: gcloud run services update-traffic $SERVICE --region $REGION --to-latest --quiet
+
+      - name: Remove candidate tag
+        if: always()
+        run: gcloud run services update-traffic $SERVICE --region $REGION --remove-tags candidate --quiet || true
+
+      - name: Roll back on failure
+        if: failure() && steps.smoke.outcome == 'success' && steps.prev.outputs.rev != ''
+        run: gcloud run services update-traffic $SERVICE --region $REGION --to-revisions ${{ steps.prev.outputs.rev }}=100 --quiet
+
+      - name: Summary
+        if: always()
+        run: |
+          echo "### $SERVICE" >> $GITHUB_STEP_SUMMARY
+          echo "- commit: ${{ github.sha }} by ${{ github.actor }}" >> $GITHUB_STEP_SUMMARY
+          echo "- previous revision (undo): ${{ steps.prev.outputs.rev }}" >> $GITHUB_STEP_SUMMARY
+          echo "- undo: gcloud run services update-traffic $SERVICE --region $REGION --to-revisions ${{ steps.prev.outputs.rev }}=100" >> $GITHUB_STEP_SUMMARY
+
