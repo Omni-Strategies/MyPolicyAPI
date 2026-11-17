@@ -4,6 +4,8 @@
 name: deploy-gcp
 
 on:
+  push:
+    branches: [main]
   workflow_dispatch:
 
 permissions:
